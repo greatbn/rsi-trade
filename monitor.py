@@ -120,6 +120,14 @@ class Monitor:
         logger.info(f"Sending summary: {msg}")
         self.send_telegram_message(msg)
 
+    def send_heartbeat(self, balance):
+        """
+        Send a heartbeat message with current balance.
+        """
+        msg = f"💓 *Heartbeat*\nBot is alive.\nBalance: *${balance:.2f}*"
+        logger.info(f"Sending heartbeat: {msg}")
+        self.send_telegram_message(msg)
+
     def poll_and_alert(self):
         """
         Periodic check for account status and alerts.

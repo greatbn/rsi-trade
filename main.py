@@ -50,6 +50,7 @@ def main():
     last_tf1_close_time = None
     last_summary_time = datetime.now()
     last_risk_sync_time = datetime.now()
+    last_heartbeat_time = datetime.now()
 
     try:
         while True:
@@ -57,6 +58,13 @@ def main():
             if datetime.now() - last_summary_time > timedelta(hours=4):
                 monitor.send_summary(hours=4)
                 last_summary_time = datetime.now()
+                
+            # Check for 1-hour Heartbeat
+            if datetime.now() - last_heartbeat_time > timedelta(hours=1):
+                account_info = mt5.get_account_info()
+                balance = account_info.get('balance', 0.0)
+                monitor.send_heartbeat(balance)
+                last_heartbeat_time = datetime.now()
                 
             # Periodic Risk Sync (e.g., every 10 minutes)
             if datetime.now() - last_risk_sync_time > timedelta(minutes=10):
