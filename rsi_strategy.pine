@@ -1,0 +1,49 @@
+//@version=5
+indicator("RSI 101 Strategy", overlay=false)
+
+// Inputs
+rsiLength = input.int(14, "RSI Length")
+wmaLength = input.int(45, "WMA Length (on RSI)")
+emaLength = input.int(9, "EMA Length (on RSI)")
+useHTF = input.bool(true, "Use Higher Timeframe Filter?", group="Strategy")
+htfResolution = input.timeframe("D", "Higher Timeframe", group="Strategy")
+
+// Calculations
+rsiValue = ta.rsi(close, rsiLength)
+wmaValue = ta.wma(rsiValue, wmaLength)
+emaValue = ta.ema(rsiValue, emaLength)
+
+// HTF Calculations
+htfRsiValue = request.security(syminfo.tickerid, htfResolution, ta.rsi(close, rsiLength))
+htfTrendUp = htfRsiValue > 50
+htfTrendDown = htfRsiValue < 50
+
+// Plotting
+plot(rsiValue, "RSI", color=color.purple, linewidth=2)
+plot(wmaValue, "WMA 45", color=color.yellow, linewidth=2)
+plot(emaValue, "EMA 9", color=color.blue, linewidth=1)
+
+// Levels
+hline(75, "Overbought", color=color.red, linestyle=hline.style_dashed)
+hline(25, "Oversold", color=color.green, linestyle=hline.style_dashed)
+hline(60, "Bullish Zone Start", color=color.gray, linestyle=hline.style_dotted)
+hline(40, "Bearish Zone Start", color=color.gray, linestyle=hline.style_dotted)
+
+// Signals based on Handbook
+// Buy: RSI crosses over WMA45. Confirmation if RSI > EMA9.
+buySignalRaw = ta.crossover(rsiValue, wmaValue) and rsiValue > emaValue
+// Sell: RSI crosses under WMA45. Confirmation if RSI < EMA9.
+sellSignalRaw = ta.crossunder(rsiValue, wmaValue) and rsiValue < emaValue
+
+// Apply HTF Filter
+buySignal = buySignalRaw and (not useHTF or htfTrendUp)
+sellSignal = sellSignalRaw and (not useHTF or htfTrendDown)
+
+plotshape(buySignal, "Buy Signal", shape.triangleup, location.bottom, color.green, size=size.small, title="Buy Signal")
+plotshape(sellSignal, "Sell Signal", shape.triangledown, location.top, color.red, size=size.small, title="Sell Signal")
+
+// Background color to indicate trend zones
+// Handbook: Uptrend when RSI > 40 (and WMA sloping up), Downtrend when RSI < 60 (and WMA sloping down)
+// Simplified visualization:
+bgcolor(rsiValue > 60 ? color.new(color.green, 90) : na, title="Bullish Zone")
+bgcolor(rsiValue < 40 ? color.new(color.red, 90) : na, title="Bearish Zone")
