@@ -47,6 +47,16 @@ class MT5Client:
         self.connected = False
         logger.info("MT5 connection shutdown.")
 
+    def check_connection(self) -> bool:
+        """
+        Check if connected to MT5, attempt to reconnect if not.
+        """
+        if not mt5.terminal_info():
+            logger.warning("MT5 connection lost. Attempting to reconnect...")
+            self.connected = False
+            return self.initialize()
+        return True
+
     def get_candles(self, symbol: str, timeframe_str: str, n: int) -> pd.DataFrame:
         """
         Fetch n candles for symbol and timeframe.
@@ -125,6 +135,38 @@ class MT5Client:
              return {'retcode': -1, 'comment': "Order send failed (None result)"}
              
         return result._asdict()
+
+    def modify_position(self, ticket: int, sl: float = None, tp: float = None) -> bool:
+        """
+        Modify SL/TP of an existing position.
+        """
+        # Get position details first to verify it exists
+        positions = mt5.positions_get(ticket=ticket)
+        if not positions:
+            logger.error(f"Position {ticket} not found for modification.")
+            return False
+            
+        position = positions[0]
+        
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": ticket,
+            "symbol": position.symbol,
+            "sl": sl if sl is not None else position.sl,
+            "tp": tp if tp is not None else position.tp,
+        }
+        
+        result = mt5.order_send(request)
+        if result is None:
+            logger.error(f"Failed to modify position {ticket} (None result)")
+            return False
+            
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            logger.error(f"Failed to modify position {ticket}, retcode: {result.retcode}")
+            return False
+            
+        logger.info(f"Position {ticket} modified. New SL: {sl}, New TP: {tp}")
+        return True
 
     def get_account_info(self) -> dict:
         info = mt5.account_info()

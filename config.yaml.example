@@ -14,6 +14,9 @@ strategy:
   rsi_period: 14
   wma_period: 45
   ema_period: 9
+  adx_period: 14
+  adx_threshold: 25
+  # Bias Logic (TF3)
   rsi_upper: 75
   rsi_lower: 25
   bias_rsi_threshold_high: 75
@@ -27,7 +30,18 @@ strategy:
 filters:
   max_spread: 20 # Points
   start_hour: 8
-  end_hour: 205              # Reward/Risk Ratio
+  end_hour: 20              # Reward/Risk Ratio
+
+news_filter:
+  enabled: true
+  minutes_before: 30
+  minutes_after: 30
+  include_medium: false # Set to true to pause for Medium impact too
+
+trailing:
+  enabled: true
+  activation_rr: 1.0   # Start trailing when profit >= 1R
+  trailing_dist_rr: 0.5 # Trail by 0.5R (or set to 0.0 for Breakeven only)
 
 risk:
   risk_percent_per_trade: 1.0

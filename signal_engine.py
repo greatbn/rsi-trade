@@ -31,6 +31,10 @@ class SignalEngine:
         df['rsi'] = indicators.rsi(df['close'], self.config['rsi_period'])
         df['rsi_wma'] = indicators.wma(df['rsi'], self.config['wma_period'])
         df['rsi_ema'] = indicators.ema(df['rsi'], self.config['ema_period'])
+        
+        # Compute ADX if configured
+        adx_period = self.config.get('adx_period', 14)
+        df['adx'] = indicators.adx(df['high'], df['low'], df['close'], adx_period)
         return df
 
     def generate(self, df3: pd.DataFrame, df2: pd.DataFrame, df1: pd.DataFrame, symbol: str, point: float = None) -> Signal:
@@ -40,6 +44,18 @@ class SignalEngine:
         # Ensure we have enough data
         if df3.empty or df2.empty or df1.empty:
             return None
+            
+        # --- ADX Filter (TF1) ---
+        # Check if trend is strong enough on execution timeframe
+        curr1 = df1.iloc[-1]
+        adx_threshold = self.config.get('adx_threshold', 25)
+        
+        # Check if ADX column exists (might be NaN at start)
+        if 'adx' in curr1 and not pd.isna(curr1['adx']):
+            if curr1['adx'] < adx_threshold:
+                # Market is chopping
+                return None
+        # ------------------------
             
         # 1. Bias Check (TF3)
         # Use last closed candle (iloc[-1] if we assume df contains closed candles, 

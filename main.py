@@ -7,6 +7,7 @@ from signal_engine import SignalEngine
 from risk_manager import RiskManager
 from executor import Executor
 from monitor import Monitor
+from news_filter import NewsFilter
 
 def load_config(path="config.yaml"):
     with open(path, "r") as f:
@@ -25,8 +26,10 @@ def main():
         return
 
     risk_manager = RiskManager(config['risk'], mt5)
-    executor = Executor(config['execution'], mt5)
+    # Pass full config to Executor so it can access 'trailing' section
+    executor = Executor(config, mt5)
     signal_engine = SignalEngine(config['strategy'])
+    news_filter = NewsFilter(config.get('news_filter', {}))
     
     symbol = config['account']['symbol']
     tf3 = config['strategy']['tf3']
@@ -72,6 +75,12 @@ def main():
                 last_risk_sync_time = datetime.now()
 
             # Check Circuit Breaker
+            # Ensure connection first
+            if not mt5.check_connection():
+                logger.error("Failed to reconnect to MT5. Retrying...")
+                time.sleep(10)
+                continue
+
             account_info = mt5.get_account_info()
             if not account_info:
                 logger.warning("Failed to get account info. Retrying...")
@@ -82,6 +91,10 @@ def main():
                 logger.warning("Risk safety check failed. Stopping trading.")
                 monitor.send_alert("Risk safety check failed. Bot stopped.")
                 break
+                
+            # --- TRAILING STOP MANAGEMENT ---
+            executor.manage_trailing_stops(symbol)
+            # --------------------------------
 
             # 1. Fetch Candles
             # Fetch enough candles for WMA45 (need at least 45+buffer)
@@ -129,6 +142,15 @@ def main():
                     continue
 
                 # --- FILTERS ---
+                # 0. News Filter
+                if config.get('news_filter', {}).get('enabled', False):
+                    is_news, event_title, mins = news_filter.is_news_imminent(symbol)
+                    if is_news:
+                        logger.warning(f"News Imminent: {event_title} ({mins:.1f} min). Pausing trading.")
+                        monitor.send_alert(f"⚠️ News Pause: {event_title} ({mins:.1f} min)")
+                        last_tf1_close_time = signal_candle_time
+                        continue
+
                 # 1. Time Filter
                 current_hour = datetime.now().hour
                 start_hour = config.get('filters', {}).get('start_hour', 0)
