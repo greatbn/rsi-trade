@@ -1,62 +1,94 @@
 //@version=5
-strategy("RSI 101 Backtest", overlay=false, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+strategy("RSI 3-TF Strategy (Python Logic)", overlay=false, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
 
 // --- Inputs ---
-// Strategy Inputs
-rsiLength = input.int(14, "RSI Length", group="Strategy")
-wmaLength = input.int(45, "WMA Length (on RSI)", group="Strategy")
-emaLength = input.int(9, "EMA Length (on RSI)", group="Strategy")
-useHTF = input.bool(true, "Use Higher Timeframe Filter?", group="Strategy")
-htfResolution = input.timeframe("D", "Higher Timeframe", group="Strategy")
+// Timeframes
+tf3 = input.timeframe("240", "TF3 (Bias)", group="Timeframes") // H4
+tf2 = input.timeframe("60", "TF2 (Zone)", group="Timeframes")  // H1
+tf1 = input.timeframe("15", "TF1 (Entry)", group="Timeframes") // M15
 
-// Risk Management Inputs
-useSLTP = input.bool(true, "Use SL/TP?", group="Risk Management")
-slPoints = input.int(500, "Stop Loss (Points)", tooltip="500 points = 50 pips (for Gold)", group="Risk Management")
-tpPoints = input.int(1000, "Take Profit (Points)", tooltip="1000 points = 100 pips", group="Risk Management")
+// RSI Settings
+rsiLength = input.int(14, "RSI Length", group="Strategy")
+wmaLength = input.int(45, "WMA Length", group="Strategy")
+emaLength = input.int(9, "EMA Length", group="Strategy")
+
+// Bias Settings (TF3)
+biasRsiHigh = input.int(75, "Bias RSI High", group="Bias")
+biasRsiLow = input.int(25, "Bias RSI Low", group="Bias")
+
+// Zone Settings (TF2)
+zoneTol = input.float(5.0, "Zone Tolerance", group="Zone")
+
+// Risk Management
+slPoints = input.int(500, "SL Points", group="Risk")
+tpRR = input.float(2.0, "TP Risk Reward", group="Risk")
 
 // --- Calculations ---
-rsiValue = ta.rsi(close, rsiLength)
-wmaValue = ta.wma(rsiValue, wmaLength)
-emaValue = ta.ema(rsiValue, emaLength)
+// Function to get RSI, WMA, EMA
+[rsi, wma, ema] = request.security(syminfo.tickerid, timeframe.period, [ta.rsi(close, rsiLength), ta.wma(ta.rsi(close, rsiLength), wmaLength), ta.ema(ta.rsi(close, rsiLength), emaLength)])
+
+// Get Data for each TF
+[rsi3, wma3, ema3] = request.security(syminfo.tickerid, tf3, [ta.rsi(close, rsiLength), ta.wma(ta.rsi(close, rsiLength), wmaLength), ta.ema(ta.rsi(close, rsiLength), emaLength)])
+[rsi2, wma2, ema2] = request.security(syminfo.tickerid, tf2, [ta.rsi(close, rsiLength), ta.wma(ta.rsi(close, rsiLength), wmaLength), ta.ema(ta.rsi(close, rsiLength), emaLength)])
+// TF1 is current chart (assuming running on TF1)
+rsi1 = ta.rsi(close, rsiLength)
+wma1 = ta.wma(rsi1, wmaLength)
+ema1 = ta.ema(rsi1, emaLength)
+
+// --- Logic ---
+
+// 1. Bias (TF3)
+bias = "NEUTRAL"
+if rsi3 >= biasRsiHigh
+    bias := "LONG"
+else if rsi3 <= biasRsiLow
+    bias := "SHORT"
+else
+    if rsi3 > wma3
+        bias := "LONG"
+    else
+        bias := "SHORT"
+
+// 2. Zone (TF2)
+inZone = false
+dist = math.abs(rsi2 - wma2)
+
+if bias == "LONG"
+    if dist <= zoneTol or (rsi2 >= 40 and rsi2 <= 55)
+        inZone := true
+else // SHORT
+    if dist <= zoneTol or (rsi2 >= 45 and rsi2 <= 60)
+        inZone := true
+
+// 3. Confirmation (TF1)
+// Crossover Logic
+buyConfirm = false
+sellConfirm = false
+
+// Check crossover on previous closed candle to match Python
+// Python checks: prev1 (closed -1) vs curr1 (closed 0) ? No, Python checks -2 vs -1.
+// In Pine, index 0 is current forming, 1 is last closed.
+// So we check crossover between 2 and 1? Or 1 and 0 (if waiting for close)?
+// Strategy executes on close of bar. So we check condition on bar 0 (which becomes closed).
+// Crossover: EMA crosses over WMA
+buyConfirm := ta.crossover(ema1, wma1) or (ta.crossover(rsi1, wma1) and rsi1 > ema1)
+sellConfirm := ta.crossunder(ema1, wma1) or (ta.crossunder(rsi1, wma1) and rsi1 < ema1)
+
+// --- Execution ---
+longCondition = (bias == "LONG") and inZone and buyConfirm
+shortCondition = (bias == "SHORT") and inZone and sellConfirm
+
+if longCondition
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", loss=slPoints, profit=slPoints * tpRR)
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", loss=slPoints, profit=slPoints * tpRR)
 
 // Plotting
-plot(rsiValue, "RSI", color=color.purple, linewidth=2)
-plot(wmaValue, "WMA 45", color=color.yellow, linewidth=2)
-plot(emaValue, "EMA 9", color=color.blue, linewidth=1)
+plot(rsi1, "RSI TF1", color=color.purple)
+plot(wma1, "WMA TF1", color=color.yellow)
+plot(ema1, "EMA TF1", color=color.blue)
 
-// Levels
-hline(75, "Overbought", color=color.red, linestyle=hline.style_dashed)
-hline(25, "Oversold", color=color.green, linestyle=hline.style_dashed)
-hline(60, "Bullish Zone Start", color=color.gray, linestyle=hline.style_dotted)
-hline(40, "Bearish Zone Start", color=color.gray, linestyle=hline.style_dotted)
-
-// HTF Calculations
-htfRsiValue = request.security(syminfo.tickerid, htfResolution, ta.rsi(close, rsiLength))
-htfTrendUp = htfRsiValue > 50
-htfTrendDown = htfRsiValue < 50
-
-// Signals
-// Buy: RSI crosses over WMA45. Confirmation if RSI > EMA9.
-buySignalRaw = ta.crossover(rsiValue, wmaValue) and rsiValue > emaValue
-// Sell: RSI crosses under WMA45. Confirmation if RSI < EMA9.
-sellSignalRaw = ta.crossunder(rsiValue, wmaValue) and rsiValue < emaValue
-
-// Apply HTF Filter
-buySignal = buySignalRaw and (not useHTF or htfTrendUp)
-sellSignal = sellSignalRaw and (not useHTF or htfTrendDown)
-
-// Strategy Execution
-if (buySignal)
-    strategy.entry("Long", strategy.long)
-
-if (sellSignal)
-    strategy.entry("Short", strategy.short)
-
-// Exit Logic (SL/TP)
-if (useSLTP)
-    strategy.exit("Exit Long", "Long", loss=slPoints, profit=tpPoints)
-    strategy.exit("Exit Short", "Short", loss=slPoints, profit=tpPoints)
-
-// Close opposite on signal (optional, but standard for reversal strategies)
-// Note: strategy.entry automatically reverses position if you are in opposite direction, 
-// unless you use hedging. Default is netting.
+bgcolor(bias == "LONG" ? color.new(color.green, 90) : bias == "SHORT" ? color.new(color.red, 90) : na)

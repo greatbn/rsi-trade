@@ -11,10 +11,64 @@ class RiskManager:
         self.consecutive_losses = 0
         self.halt_trading = False
 
+    def sync_daily_stats(self):
+        """
+        Sync daily loss and consecutive losses from MT5 history.
+        """
+        from datetime import datetime, timedelta
+        
+        now = datetime.now()
+        # Start of day (00:00:00)
+        from_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        deals = self.mt5.get_history_deals(from_date, now)
+        
+        daily_profit = 0.0
+        consecutive_losses = 0
+        
+        # Sort deals by time to count consecutive losses correctly
+        # Assuming get_history_deals returns list of dicts, we need to sort if not sorted.
+        # MT5 usually returns sorted by time, but let's be safe if we can, 
+        # or just iterate.
+        
+        for deal in deals:
+            profit = deal.get('profit', 0.0)
+            swap = deal.get('swap', 0.0)
+            commission = deal.get('commission', 0.0)
+            net_profit = profit + swap + commission
+            
+            # Filter out non-trading deals (balance ops) if needed.
+            # Usually entry=IN has 0 profit. entry=OUT has profit.
+            # We only care about realized P&L.
+            if net_profit == 0:
+                continue
+                
+            daily_profit += net_profit
+            
+            if net_profit < 0:
+                consecutive_losses += 1
+            else:
+                consecutive_losses = 0
+                
+        # If daily_profit is negative, that's our daily loss (positive number)
+        if daily_profit < 0:
+            self.daily_loss = abs(daily_profit)
+        else:
+            self.daily_loss = 0.0
+            
+        self.consecutive_losses = consecutive_losses
+        
+        logger.info(f"Risk State Synced: Daily Loss={self.daily_loss}, Consec Losses={self.consecutive_losses}")
+
     def check_safety(self, account_balance):
         """
         Check circuit breakers (daily loss, consecutive losses).
         """
+        # Always sync before checking? Or rely on periodic sync?
+        # For safety, let's trust the internal state which should be kept up to date.
+        # But if we want to be super safe, we could sync here. 
+        # For performance, let's assume sync is called in main loop.
+        
         if self.halt_trading:
             return False
             
@@ -99,13 +153,12 @@ class RiskManager:
         """
         Update daily loss and consecutive loss counters based on closed trade profit.
         """
+        # This is kept for immediate updates after a trade close, 
+        # but sync_daily_stats is the source of truth.
         if profit < 0:
             self.daily_loss += abs(profit)
             self.consecutive_losses += 1
         else:
-            # Optional: Reduce daily loss by profit? Or just track gross loss?
-            # Usually daily loss limit is about "how much I lost today", net or gross.
-            # Let's assume Net P&L for the day.
             self.daily_loss -= profit 
             if self.daily_loss < 0:
                 self.daily_loss = 0

@@ -33,7 +33,7 @@ class SignalEngine:
         df['rsi_ema'] = indicators.ema(df['rsi'], self.config['ema_period'])
         return df
 
-    def generate(self, df3: pd.DataFrame, df2: pd.DataFrame, df1: pd.DataFrame, symbol: str) -> Signal:
+    def generate(self, df3: pd.DataFrame, df2: pd.DataFrame, df1: pd.DataFrame, symbol: str, point: float = None) -> Signal:
         """
         Generate signal based on 3-TF logic.
         """
@@ -151,17 +151,24 @@ class SignalEngine:
                 sl_price = window['high'].max()
         else:
             # Fixed Pips
-            # Need point size, assume passed or handled later? 
-            # Signal engine usually deals with price. 
-            # Let's assume standard point for now or handle in executor?
-            # Better to return SL distance or let RiskManager handle?
-            # Spec says Signal has sl_price.
-            # We need pip size. 
-            # For MVP, let's use a placeholder or relative distance if we don't have symbol info here.
-            # But we can pass symbol info or just use a small delta.
-            # Let's assume 0.01 for XAUUSD for now or 0.0001 for Forex.
-            # Better: Use swing as default as it's price based.
-            pass
+            if point is None:
+                # Fallback to heuristic if point not provided
+                if entry_price > 500: # Indices, Gold, Crypto
+                    point = 0.01 # Crude assumption
+                    if entry_price > 20000: # BTC
+                        point = 1.0
+                elif entry_price > 20: # Oil, etc
+                    point = 0.001
+                else: # Forex
+                    point = 0.00001
+                
+            sl_points = self.config.get('sl_points', 500) # Default 500 points
+            sl_dist = sl_points * point
+            
+            if bias == 'LONG':
+                sl_price = entry_price - sl_dist
+            else:
+                sl_price = entry_price + sl_dist
 
         # Calculate TP
         dist = abs(entry_price - sl_price)

@@ -22,7 +22,12 @@ strategy:
   sl_method: "swing"      # options: swing, fixed_pips
   swing_lookback: 20      # bars to look back for swing high/low
   fixed_sl_pips: 50       # 50 pips = 500 points
-  tp_rr: 1.5              # Reward/Risk Ratio
+  tp_rr: 2.0
+
+filters:
+  max_spread: 20 # Points
+  start_hour: 8
+  end_hour: 205              # Reward/Risk Ratio
 
 risk:
   risk_percent_per_trade: 1.0

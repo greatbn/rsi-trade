@@ -44,8 +44,12 @@ def main():
 
     from datetime import datetime, timedelta
 
+    # Initial Risk Sync
+    risk_manager.sync_daily_stats()
+    
     last_tf1_close_time = None
     last_summary_time = datetime.now()
+    last_risk_sync_time = datetime.now()
 
     try:
         while True:
@@ -53,6 +57,11 @@ def main():
             if datetime.now() - last_summary_time > timedelta(hours=4):
                 monitor.send_summary(hours=4)
                 last_summary_time = datetime.now()
+                
+            # Periodic Risk Sync (e.g., every 10 minutes)
+            if datetime.now() - last_risk_sync_time > timedelta(minutes=10):
+                risk_manager.sync_daily_stats()
+                last_risk_sync_time = datetime.now()
 
             # Check Circuit Breaker
             account_info = mt5.get_account_info()
@@ -104,6 +113,43 @@ def main():
                 # New candle closed!
                 logger.info(f"New candle closed at {signal_candle_time}. Analyzing...")
                 
+                # Check for existing positions
+                open_positions = mt5.get_open_positions(symbol=symbol)
+                if open_positions:
+                    logger.info(f"Position already open for {symbol}. Skipping new signal generation.")
+                    last_tf1_close_time = signal_candle_time
+                    continue
+
+                # --- FILTERS ---
+                # 1. Time Filter
+                current_hour = datetime.now().hour
+                start_hour = config.get('filters', {}).get('start_hour', 0)
+                end_hour = config.get('filters', {}).get('end_hour', 24)
+                
+                if not (start_hour <= current_hour < end_hour):
+                    logger.info(f"Outside trading hours ({current_hour}:00). Allowed: {start_hour}-{end_hour}. Skipping.")
+                    last_tf1_close_time = signal_candle_time
+                    continue
+
+                # 2. Spread Filter
+                tick = mt5.get_tick(symbol)
+                if tick:
+                    spread = tick['ask'] - tick['bid']
+                    # Convert to points
+                    symbol_info = mt5.get_symbol_info(symbol)
+                    point = symbol_info.point if symbol_info else 0.00001
+                    spread_points = spread / point
+                    
+                    max_spread = config.get('filters', {}).get('max_spread', 1000)
+                    if spread_points > max_spread:
+                        logger.warning(f"Spread too high ({spread_points:.1f} > {max_spread}). Skipping.")
+                        last_tf1_close_time = signal_candle_time
+                        continue
+                else:
+                    logger.warning("Could not get tick for spread check. Skipping.")
+                    continue
+                # ---------------
+                
                 # Generate Signal
                 # Note: signal_engine.generate uses iloc[-1] for "current". 
                 # If we want to analyze the closed candle, we should pass sliced DFs or adjust logic.
@@ -124,7 +170,11 @@ def main():
                 df2_closed = df2.iloc[:-1]
                 df1_closed = df1.iloc[:-1]
                 
-                signal = signal_engine.generate(df3_closed, df2_closed, df1_closed, symbol)
+                # Get symbol point for Fixed SL calculation
+                symbol_info = mt5.get_symbol_info(symbol)
+                point = symbol_info.point if symbol_info else None
+                
+                signal = signal_engine.generate(df3_closed, df2_closed, df1_closed, symbol, point=point)
                 
                 if signal:
                     logger.info(f"Signal Generated: {signal}")
