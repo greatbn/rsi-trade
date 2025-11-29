@@ -7,6 +7,12 @@ account:
   password: "password"  # Replace with your MT5 password
   server: "server"      # Replace with your MT5 server
 
+monitor:
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+  poll_interval: 10       # seconds
+
+
 strategy:
   tf3: "H4"             # Trend Bias
   tf2: "H1"             # Entry Zone
@@ -53,7 +59,3 @@ execution:
   allow_pyramiding: False
   magic: 123456
 
-monitor:
-  telegram_bot_token: ""
-  telegram_chat_id: ""
-  poll_interval: 10       # seconds
