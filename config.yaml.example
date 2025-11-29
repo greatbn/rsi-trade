@@ -1,0 +1,40 @@
+account:
+  symbol: "XAUUSD"
+  lot_min: 0.01
+  lot_step: 0.01
+  leverage: 100
+  login: 12345678       # Replace with your MT5 login
+  password: "password"  # Replace with your MT5 password
+  server: "server"      # Replace with your MT5 server
+
+strategy:
+  tf3: "H4"             # Trend Bias
+  tf2: "H1"             # Entry Zone
+  tf1: "M15"            # Execution / Confirmation
+  rsi_period: 14
+  wma_period: 45
+  ema_period: 9
+  rsi_upper: 75
+  rsi_lower: 25
+  bias_rsi_threshold_high: 75
+  bias_rsi_threshold_low: 25
+  tf2_zone_tolerance: 5.0 # Tolerance for "near WMA" check
+  sl_method: "swing"      # options: swing, fixed_pips
+  swing_lookback: 20      # bars to look back for swing high/low
+  fixed_sl_pips: 50       # 50 pips = 500 points
+  tp_rr: 1.5              # Reward/Risk Ratio
+
+risk:
+  risk_percent_per_trade: 1.0
+  max_daily_loss_percent: 5.0
+  max_consecutive_losses: 5
+
+execution:
+  deviation: 20           # max slippage in points
+  allow_pyramiding: False
+  magic: 123456
+
+monitor:
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+  poll_interval: 10       # seconds
